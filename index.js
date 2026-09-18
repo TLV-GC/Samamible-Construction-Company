@@ -119,6 +119,11 @@ async function initDb() {
       message      TEXT NOT NULL,
       submitted_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT
+    );
   `);
 }
 
@@ -156,6 +161,29 @@ app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
 app.use(express.json({ limit: "2mb" }));
 
 app.get("/api/health", (req, res) => res.json({ ok: true, service: "samamiable-construction-backend" }));
+
+/* ---- site settings (e.g. the logo) ---- */
+
+app.get("/api/settings/:key", async (req, res, next) => {
+  try {
+    const result = await pool.query("SELECT value FROM settings WHERE key = $1", [req.params.key]);
+    if (!result.rows.length) return res.status(404).json({ error: "Not set." });
+    res.json({ key: req.params.key, value: result.rows[0].value });
+  } catch (err) { next(err); }
+});
+
+app.put("/api/settings/:key", authenticate, requireAdmin, async (req, res, next) => {
+  try {
+    const { value } = req.body || {};
+    if (typeof value !== "string" || !value) return res.status(400).json({ error: "A value is required." });
+    await pool.query(
+      `INSERT INTO settings (key, value) VALUES ($1, $2)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+      [req.params.key, value]
+    );
+    res.json({ key: req.params.key, value });
+  } catch (err) { next(err); }
+});
 
 /* ---- auth ---- */
 
